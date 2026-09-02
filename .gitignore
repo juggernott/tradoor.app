@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Alphaloop runtime artifacts — never commit cache, journal contents, secrets,
+# or live runner state. journal/ and cache/ are user data, not source.
+.env
+.env.*
+cache/
+journal/
+state/
+*.log
+
+.DS_Store

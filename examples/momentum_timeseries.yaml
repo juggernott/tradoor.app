@@ -1,0 +1,39 @@
+name: btc-eth-momentum-1h
+hypothesis: >-
+  BTC and ETH price above their own 20-period rolling mean predicts
+  continued upside over the next few hours; below predicts continued
+  downside. A simple momentum/trend-following timeseries strategy.
+kind: timeseries
+universe:
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+features:
+  - price.ohlcv:1h
+signals:
+  entry: close > close.rolling(20).mean()
+  exit: close < close.rolling(20).mean()
+sizer:
+  name: vol_target
+  params:
+    target_annual_vol: 0.3
+    lookback: 30
+    max_leverage: 2.0
+risk:
+  max_position_pct: 0.5
+  max_gross_exposure: 1.0
+  max_net_exposure: 1.0
+  per_trade_risk_pct: 0.02
+  drawdown_halt_pct: 0.25
+costs:
+  fee_bps: 7.5
+  slippage_bps: 5.0
+  funding: true
+data_window:
+  start: "2024-01-01"
+  end: "2024-04-01"
+  freq: 1h
+venue: binance
+tags:
+  - momentum
+  - trend-following

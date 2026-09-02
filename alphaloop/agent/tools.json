@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Tool contract mirroring alphaloop/cli.py exactly, one entry per CLI command.",
+  "tools": [
+    {
+      "name": "alphaloop_compile",
+      "description": "Compile a natural-language idea into a StrategySpec YAML. Never runs it.",
+      "mutating": false,
+      "cli": "alphaloop compile",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "idea": { "type": "string" },
+          "out": { "type": "string", "description": "Optional path to save the spec YAML" }
+        },
+        "required": ["idea"]
+      }
+    },
+    {
+      "name": "alphaloop_run",
+      "description": "Backtest + validate a spec file. Requires confirmation unless yes=true.",
+      "mutating": true,
+      "requires_confirmation": true,
+      "cli": "alphaloop run",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "spec_path": { "type": "string" },
+          "yes": { "type": "boolean", "default": false },
+          "adapter": { "type": "array", "items": { "type": "string" } },
+          "n_splits": { "type": "integer", "default": 5 },
+          "embargo": { "type": "integer", "default": 0 }
+        },
+        "required": ["spec_path"]
+      }
+    },
+    {
+      "name": "alphaloop_new",
+      "description": "Compile an idea AND run it in one step. Same confirmation gate as alphaloop_run.",
+      "mutating": true,
+      "requires_confirmation": true,
+      "cli": "alphaloop new",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "idea": { "type": "string" },
+          "yes": { "type": "boolean", "default": false },
+          "adapter": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["idea"]
+      }
+    },
+    {
+      "name": "alphaloop_analyze",
+      "description": "Show a journaled run's scorecard. Read-only.",
+      "mutating": false,
+      "cli": "alphaloop analyze",
+      "parameters": {
+        "type": "object",
+        "properties": { "run_id": { "type": "string" } },
+        "required": ["run_id"]
+      }
+    },
+    {
+      "name": "alphaloop_journal",
+      "description": "List journal entries, optionally filtered by verdict. Read-only.",
+      "mutating": false,
+      "cli": "alphaloop journal",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "verdict": { "type": "string", "enum": ["PROMOTE", "ITERATE", "KILL"] }
+        }
+      }
+    },
+    {
+      "name": "alphaloop_export",
+      "description": "Export a journal run as a verified, reproducible ZIP bundle. Writes a file, does not touch markets.",
+      "mutating": true,
+      "requires_confirmation": false,
+      "cli": "alphaloop export",
+      "parameters": {
+        "type": "object",
+        "properties": { "run_id": { "type": "string" } },
+        "required": ["run_id"]
+      }
+    },
+    {
+      "name": "alphaloop_adapters",
+      "description": "List installed adapters/engines/sizers/executors/validators. Read-only.",
+      "mutating": false,
+      "cli": "alphaloop adapters",
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "alphaloop_doctor",
+      "description": "Check config/key health and venue connectivity. Read-only.",
+      "mutating": false,
+      "cli": "alphaloop doctor",
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "alphaloop_positions",
+      "description": "Show current venue-truth positions. Read-only.",
+      "mutating": false,
+      "cli": "alphaloop positions",
+      "parameters": {
+        "type": "object",
+        "properties": { "venue": { "type": "string", "enum": ["binance", "hyperliquid"] } },
+        "required": ["venue"]
+      }
+    },
+    {
+      "name": "alphaloop_paper",
+      "description": "Start paper trading a spec against live prices. Simulated fills only. Requires confirmation.",
+      "mutating": true,
+      "requires_confirmation": true,
+      "cli": "alphaloop paper",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "spec_path": { "type": "string" },
+          "yes": { "type": "boolean", "default": false }
+        },
+        "required": ["spec_path"]
+      }
+    },
+    {
+      "name": "alphaloop_trade",
+      "description": "Start live/testnet trading. Real capital is only ever at risk when BOTH live=true AND config_ack=true — never set both unless the user has explicitly, separately said they want real money traded.",
+      "mutating": true,
+      "requires_confirmation": true,
+      "cli": "alphaloop trade",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "spec_path": { "type": "string" },
+          "venue": { "type": "string", "enum": ["binance", "hyperliquid"] },
+          "testnet": { "type": "boolean", "default": true },
+          "dry_run": { "type": "boolean", "default": false },
+          "live": { "type": "boolean", "default": false },
+          "config_ack": { "type": "boolean", "default": false },
+          "yes": { "type": "boolean", "default": false }
+        },
+        "required": ["spec_path", "venue"]
+      }
+    },
+    {
+      "name": "alphaloop_flatten",
+      "description": "Close everything at a venue immediately. Manual override. Requires confirmation.",
+      "mutating": true,
+      "requires_confirmation": true,
+      "cli": "alphaloop flatten",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "venue": { "type": "string", "enum": ["binance", "hyperliquid"] },
+          "yes": { "type": "boolean", "default": false }
+        },
+        "required": ["venue"]
+      }
+    },
+    {
+      "name": "alphaloop_resume",
+      "description": "Clear a halted runner's kill-switch. Requires ack=true.",
+      "mutating": true,
+      "requires_confirmation": true,
+      "cli": "alphaloop resume",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "run_id": { "type": "string" },
+          "ack": { "type": "boolean", "default": false }
+        },
+        "required": ["run_id"]
+      }
+    }
+  ]
+}

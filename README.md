@@ -1,5 +1,14 @@
 # Alphaloop
 
+## Tradoor dashboard
+
+The Tradoor web layer now uses a Python API, SQLite persistence, and an independent
+research/paper worker. **Alphacore v12 is the selected engine; its private adapter
+is not connected yet**, and research creation remains unavailable until it is.
+See [backend setup, verification, and remaining work](docs/tradoor-backend.md).
+The existing CLI engine described below remains separate; it is not a fallback
+for the Tradoor dashboard.
+
 *where most alpha goes to die.*
 
 Alphaloop is an open-source (MIT) agentic research loop for crypto quants.

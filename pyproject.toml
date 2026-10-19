@@ -33,6 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+web = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.27,<1"]
 # vectorbt (the open-source backtest engine) pins plotly's *rendering* template
 # in a way that breaks on plotly>=5.19 (it references the removed
 # `scattermapbox` trace type). Pin plotly to keep it importable until upstream

@@ -1,0 +1,13 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {parseCSV,sampleData,backtest,createReplay,advanceReplay,targetWeights,metrics} from '../dist/engine.js';
+const data=parseCSV(sampleData()),config={capital:100000,lookback:20,selection:1,feeBps:5,slippageBps:2,mode:'momentum'};
+test('sample data is repeatable and balanced',()=>{assert.equal(sampleData(),sampleData());assert.equal(data.dates.length,400);assert.equal(data.symbols.length,6);});
+test('reject duplicate, incomplete, invalid calendar dates and nonpositive prices',()=>{const csv=sampleData();assert.throws(()=>parseCSV(csv+'\n'+csv.split('\n')[1]),/Duplicate/);assert.throws(()=>parseCSV(csv.split('\n').slice(0,-1).join('\n')),/Missing/);assert.throws(()=>parseCSV(csv.replace('2025-01-01','2025-02-30')),/Invalid/);assert.throws(()=>parseCSV(csv.replace(/,\d+\.\d+/,',0')),/Invalid/);});
+test('signal weights do not use future prices',()=>{const altered=structuredClone(data);altered.prices[21]=altered.prices[21].map((x,i)=>x*(i+50));assert.deepEqual(targetWeights(data,config,20),targetWeights(altered,config,20));});
+test('signal targets 50% long / 50% short',()=>{const w=targetWeights(data,config,20);assert.equal(w.reduce((a,b)=>a+b,0),0);assert.equal(w.reduce((a,b)=>a+Math.abs(b),0),1);});
+test('entry costs and next-day dollar PnL are charged correctly',()=>{const run=createReplay(data,config),w=targetWeights(data,config,20);const expectedPnl=w.reduce((a,b,j)=>a+b*config.capital*(data.prices[21][j]/data.prices[20][j]-1),0);advanceReplay(data,run);assert.ok(Math.abs(run.equity-(config.capital-70+expectedPnl))<1e-7);assert.equal(run.fills.length,2);assert.equal(run.index,21);});
+test('paper replay equals batch backtest including every fill',()=>{const replay=createReplay(data,config);while(replay.status!=='complete'&&replay.status!=='stopped')advanceReplay(data,replay);const batch=backtest(data,config);assert.deepEqual(replay.curve,batch.curve);assert.deepEqual(replay.fills,batch.fills);assert.throws(()=>advanceReplay(data,replay),/terminal/);});
+test('zero price movement loses only entry costs',()=>{const flat=structuredClone(data);flat.prices=flat.prices.map(()=>Array(6).fill(100));const r=createReplay(flat,config);advanceReplay(flat,r);assert.equal(r.equity,99930);});
+test('validate config rejects NaN, missing mode, overlap and insufficient dates',()=>{for(const patch of [{capital:NaN},{feeBps:-1},{lookback:400},{selection:4},{mode:'fake'}])assert.throws(()=>backtest(data,{...config,...patch}));});
+test('drawdown includes the starting capital',()=>{const m=metrics([{equity:100},{equity:80},{equity:90}],100);assert.equal(m.maxDrawdown,.19999999999999996);assert.ok(Math.abs(m.totalReturn+.1)<1e-10);});

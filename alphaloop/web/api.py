@@ -20,6 +20,7 @@ from alphaloop.web.engine import EngineUnavailable, load_engine
 from alphaloop.web.research import Config, csv_frame
 from alphaloop.web.store import Store, new_id
 from alphaloop.web.market import PublicMarket
+from alphaloop.web.catalog import HistoricalCatalog
 
 
 class DatasetRequest(BaseModel):
@@ -57,6 +58,7 @@ def create_app(db_path=None, *, local=False, token=None, engine=None, allowed_ho
     store = Store(db_path or os.environ.get("TRADOOR_DB", "state/tradoor.sqlite3"))
     app = FastAPI(title="Tradoor API", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
+    catalog = HistoricalCatalog(store.workspace_id)
     hosts = allowed_hosts or ["localhost", "127.0.0.1", "::1"]
     if not local and os.environ.get("TRADOOR_HOST"):
         hosts = [os.environ["TRADOOR_HOST"]]
@@ -151,6 +153,19 @@ def create_app(db_path=None, *, local=False, token=None, engine=None, allowed_ho
             "symbols": sorted(frame.index.get_level_values("symbol").unique()), "bars": len(dates),
             "start": dates[0].isoformat(), "end": dates[-1].isoformat(), "sha256": hashlib.sha256(body.csv.encode()).hexdigest()})
         return {k:v for k,v in result.items() if k!="csv"}
+
+    @app.get("/api/catalog")
+    def data_catalog():
+        return {"datasets": catalog.list()}
+
+    @app.post("/api/catalog/{identifier}/import", status_code=201)
+    def import_catalog(identifier: str):
+        approved = catalog.read(identifier)
+        result = dataset(DatasetRequest(csv=approved["csv"], source=approved["source"]))
+        record = store.get("dataset", result["id"])
+        record.update(catalog_id=approved["catalog_id"], attribution=approved["attribution"])
+        store.put("dataset", record)
+        return {k:v for k,v in record.items() if k != "csv"}
 
     @app.get("/api/datasets/{identifier}")
     def get_dataset(identifier: str):

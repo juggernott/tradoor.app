@@ -53,6 +53,7 @@ class Worker:
                 if not curve or len(curve)>5001 or any(not math.isfinite(float(point["equity"])) for point in curve):
                     raise ValueError("Engine returned an invalid equity curve")
                 result["dataset_id"] = dataset["id"]
+                result["attribution"] = dataset.get("attribution", "")
                 self.store.finish_job(job, result=result)
             except Exception as exc:
                 log.exception("Backtest job failed")

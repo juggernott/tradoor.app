@@ -8,8 +8,9 @@ import re
 def configure_workspace(filename):
     path = Path(filename).resolve(strict=True)
     config = json.loads(path.read_text(encoding="utf-8"))
-    allowed = {"id", "database", "engine_factory", "source_root", "token_env", "host"}
-    if set(config) - allowed or not {"id", "database", "engine_factory", "source_root", "token_env", "host"} <= set(config):
+    required = {"id", "database", "engine_factory", "source_root", "token_env", "host"}
+    allowed = required | {"data_catalog"}
+    if set(config) - allowed or not required <= set(config):
         raise ValueError("Workspace configuration has missing or unknown fields")
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", config["id"]):
         raise ValueError("Invalid workspace identity")
@@ -25,5 +26,6 @@ def configure_workspace(filename):
         TRADOOR_DB=relative(config["database"]),
         TRADOOR_ENGINE_FACTORY=config["engine_factory"],
         TRADOOR_ALPHACORE_ROOT=relative(config["source_root"]),
-        TRADOOR_ADMIN_TOKEN=token, TRADOOR_HOST=config["host"])
+        TRADOOR_ADMIN_TOKEN=token, TRADOOR_HOST=config["host"],
+        TRADOOR_DATA_CATALOG=relative(config["data_catalog"]) if config.get("data_catalog") else "")
     return os.environ["TRADOOR_DB"]

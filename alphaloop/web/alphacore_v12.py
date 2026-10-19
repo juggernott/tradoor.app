@@ -19,6 +19,7 @@ import polars as pl
 
 from alphaloop.web.engine import EngineUnavailable, source_root
 from alphaloop.web.research import Config, csv_frame
+from alphaloop.web.baseline_strategy import balanced_rank_weights
 
 SOURCE_FILES = ("backtest.py", "validation.py", "datasource.py", "eda.py", "factor.py", "normalisers.py", "signals.py", "__init__.py")
 
@@ -61,17 +62,7 @@ class AlphacoreV12:
         scores = np.column_stack([self.factor.rate_of_change(pl.Series(prices[s].to_numpy()), config.lookback).to_numpy() for s in prices.columns])
         if config.mode == "reversal":
             scores = -scores
-        weights = np.zeros_like(scores, dtype=float)
-        # A full ROC/std window is used for forward/backtest consistency; warmup is flat.
-        for i in range(2*config.lookback, len(prices)):
-            row = scores[i]
-            if not np.isfinite(row).all():
-                raise ValueError("V12 returned a non-finite score")
-            if np.allclose(row, 0, atol=1e-14):
-                continue
-            order = np.argsort(-row, kind="stable")
-            weights[i,order[:config.selection]] = .5/config.selection
-            weights[i,order[-config.selection:]] = -.5/config.selection
+        weights = balanced_rank_weights(scores, config.selection, 2*config.lookback)
         return prices, pd.DataFrame(weights,index=prices.index,columns=prices.columns)
 
     def weights(self, frame, config, frequency):

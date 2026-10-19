@@ -20,4 +20,9 @@ journal/
 state/
 *.log
 
+# Customer strategy packages and alpha must stay outside the distributable engine.
+private/
+customer-strategies/
+alpha-vault/
+
 .DS_Store

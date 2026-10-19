@@ -86,4 +86,4 @@ For users who do not want the hosting operator to receive their alpha, provide
 a customer-hosted runner that keeps code and research data in their environment.
 Send only the minimum explicitly authorized output to Tradoor. Hosted execution
 alone cannot promise secrecy from the operator; encryption at rest does not
-change that trust boundary. Neither runner mode is implemented yet.
+change that trust boundary. An offline customer-hosted backtest runner is now implemented; see customer-runner.md. Cloud synchronization and hosted sandbox runtime verification remain pending.

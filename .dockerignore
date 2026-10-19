@@ -1,0 +1,10 @@
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!alphaloop/
+!alphaloop/**
+!deploy/
+!deploy/runner.Dockerfile
+**/__pycache__/
+**/*.pyc

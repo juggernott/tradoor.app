@@ -3,8 +3,9 @@
 ## Tradoor dashboard
 
 The Tradoor web layer now uses a Python API, SQLite persistence, and an independent
-research/paper worker. **Alphacore v12 is the selected engine; its private adapter
-is not connected yet**, and research creation remains unavailable until it is.
+research/paper worker. **Alphacore v12 is connected through a private source adapter**, with backend
+backtests and continuous simulated trading verified locally. The private source
+is configured separately and is never distributed in this repository.
 See [backend setup, verification, and remaining work](docs/tradoor-backend.md).
 The existing CLI engine described below remains separate; it is not a fallback
 for the Tradoor dashboard.

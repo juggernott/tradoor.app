@@ -25,6 +25,30 @@ class PublicMarket:
     def __init__(self):
         self.exchanges = {}
 
+    def daily_history(self, exchange_id, symbols, bars):
+        if exchange_id not in EXCHANGES or not 500<=bars<=800:
+            raise ValueError("Choose a supported exchange and 500–800 daily bars")
+        exchange = getattr(ccxt,exchange_id)({"enableRateLimit":True,"timeout":15000})
+        now=time.time()
+        rows=[]
+        for symbol in symbols:
+            candles=exchange.fetch_ohlcv(symbol,timeframe="1d",since=int((now-(bars+4)*86400)*1000),limit=bars+4)
+            for ts,_o,_h,_l,close,_v in candles:
+                if ts/1000+86400<=now:
+                    rows.append((pd.Timestamp(ts,unit="ms",tz="UTC"),symbol,float(close)))
+        frame=pd.DataFrame(rows,columns=["ts","symbol","close"]).drop_duplicates(["ts","symbol"])
+        panel=frame.pivot(index="ts",columns="symbol",values="close").sort_index().dropna()
+        if len(panel)<bars or len(panel.columns)!=len(symbols):
+            raise ValueError("Exchange did not return enough common closed daily bars")
+        panel=panel.tail(bars)
+        if not (panel.index.to_series().diff().dropna()==pd.Timedelta(days=1)).all():
+            raise ValueError("Gap in exchange daily history")
+        if time.time()-panel.index[-1].timestamp()-86400>86520:
+            raise ValueError("Historical feed is not current")
+        output=panel.stack().rename("close").reset_index()
+        output["date"]=output["ts"].dt.strftime("%Y-%m-%d")
+        return output[["date","symbol","close"]].to_csv(index=False)
+
     def snapshot(self, exchange_id, symbols, frequency, lookback):
         if exchange_id not in EXCHANGES or frequency not in FREQUENCIES:
             raise ValueError("Unsupported public market or frequency")

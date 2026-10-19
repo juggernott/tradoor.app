@@ -17,11 +17,11 @@ export function parseCSV(text) {
   for (let i=1;i<dates.length;i++) if ((Date.parse(dates[i])-Date.parse(dates[i-1]))/86400000 !== 1) throw Error('This version requires consecutive daily bars, including weekends.');
   return {dates, symbols, prices: dates.map(d=>symbols.map(s=>byDate.get(d)[s]))};
 }
-export function sampleData() {
+export function sampleData(periods=400) {
   let seed=9127; const random=()=>{seed=(seed*16807)%2147483647;return seed/2147483647;};
   const symbols=['BTC','ETH','SOL','BNB','LINK','AVAX']; let prices=[42000,2200,95,310,15,35];
   const rows=['date,symbol,close'];
-  for(let i=0;i<400;i++) {const date=new Date(Date.UTC(2025,0,1+i)).toISOString().slice(0,10);prices=prices.map((p,j)=>p*Math.exp((random()-.49)*.055 + Math.sin(i/27+j)*.002));symbols.forEach((s,j)=>rows.push(`${date},${s},${prices[j].toFixed(6)}`));}
+  for(let i=0;i<periods;i++) {const date=new Date(Date.UTC(2025,0,1+i)).toISOString().slice(0,10);prices=prices.map((p,j)=>p*Math.exp((random()-.49)*.055 + Math.sin(i/27+j)*.002));symbols.forEach((s,j)=>rows.push(`${date},${s},${prices[j].toFixed(6)}`));}
   return rows.join('\n');
 }
 export function validateConfig(data, config) {

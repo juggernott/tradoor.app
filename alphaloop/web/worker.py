@@ -44,6 +44,8 @@ class Worker:
             try:
                 dataset = self.store.get("dataset", job["dataset_id"])
                 engine = self.selected_engine()
+                if job.get("engine") != engine.name:
+                    raise ValueError("Queued engine version differs from the configured engine")
                 result = engine.backtest(dataset["csv"], job["config"], job["id"], dataset["source"])
                 if result.get("id") != job["id"] or result.get("engine") != engine.name or result.get("config") != job["config"] or result.get("status") != "completed":
                     raise ValueError("Engine result identity does not match the requested run")
@@ -73,7 +75,7 @@ class Worker:
         paper = self.store.get("paper", identifier)
         if paper["status"] != "running":
             return False
-        snapshot = self.market.snapshot(paper["exchange"], paper["symbols"], paper["frequency"], paper["config"]["lookback"])
+        snapshot = self.market.snapshot(paper["exchange"], paper["symbols"], paper["frequency"], 2*paper["config"]["lookback"]+1)
         if time.time()-snapshot.observed_at > 120 or set(snapshot.prices) != set(paper["symbols"]) or any(not math.isfinite(p) or p<=0 for p in snapshot.prices.values()):
             raise ValueError("Incomplete or stale mark snapshot")
         engine = self.selected_engine()

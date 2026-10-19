@@ -19,6 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from alphaloop.web.engine import EngineUnavailable, load_engine
 from alphaloop.web.research import Config, csv_frame
 from alphaloop.web.store import Store, new_id
+from alphaloop.web.market import PublicMarket
 
 
 class DatasetRequest(BaseModel):
@@ -30,6 +31,13 @@ class DatasetRequest(BaseModel):
 class BacktestRequest(BaseModel):
     dataset_id: str
     config: Config
+
+
+class MarketDatasetRequest(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    exchange: Literal["binance","kraken"]="binance"
+    symbols: list[str]=Field(min_length=2,max_length=10)
+    bars: int=Field(default=600,ge=500,le=800)
 
 
 class PaperRequest(BaseModel):
@@ -99,10 +107,14 @@ def create_app(db_path=None, *, local=False, token=None, engine=None, allowed_ho
     @app.get("/api/health")
     def health():
         try:
-            name, ready, reason = selected_engine().name, True, None
+            connected = selected_engine()
+            name, ready, reason = connected.name, True, None
+            minimum_bars = getattr(connected, "minimum_bars", 5)
         except EngineUnavailable as exc:
             name, ready, reason = "Alphacore v12", False, str(exc)
+            minimum_bars = None
         return {"api": "ready", "engine": name, "engine_ready": ready, "engine_error": reason,
+                "minimum_bars": minimum_bars,
                 "mode": "loopback-development" if local else "single-owner", "worker": store.worker_status(), "live_execution": False}
 
     @app.post("/api/login")
@@ -144,17 +156,31 @@ def create_app(db_path=None, *, local=False, token=None, engine=None, allowed_ho
     def get_dataset(identifier: str):
         return store.get("dataset", identifier)
 
+    @app.post("/api/datasets/market", status_code=201)
+    def import_market(body: MarketDatasetRequest):
+        import re
+        if len(set(body.symbols))!=len(body.symbols) or not all(re.fullmatch(r"[A-Z0-9]{1,15}/(USDT|USD|USDC)",s) for s in body.symbols):
+            raise HTTPException(422,"Use distinct explicit exchange symbols such as BTC/USDT")
+        if len({s.split("/")[1] for s in body.symbols})!=1:
+            raise HTTPException(422,"All symbols must use the same quote currency")
+        try:
+            csv=PublicMarket().daily_history(body.exchange,body.symbols,body.bars)
+        except Exception as exc:
+            raise HTTPException(502,"Public exchange history is unavailable: "+type(exc).__name__) from exc
+        return dataset(DatasetRequest(csv=csv,source=f"{body.exchange} public daily closes · "+", ".join(body.symbols)))
+
     @app.post("/api/backtests", status_code=202)
     def submit(body: BacktestRequest):
         try:
-            selected_engine()
+            connected = selected_engine()
         except EngineUnavailable as exc:
             raise HTTPException(503, str(exc)) from exc
         dataset = store.get("dataset", body.dataset_id)
-        if body.config.lookback+2 >= dataset["bars"] or body.config.selection*2>len(dataset["symbols"]):
-            raise HTTPException(422, "Insufficient dates or overlapping long/short baskets")
+        required = max(getattr(connected,"minimum_bars",5),getattr(connected,"warmup_multiplier",1)*body.config.lookback+3)
+        if dataset["bars"]<required or body.config.selection*2>len(dataset["symbols"]):
+            raise HTTPException(422, f"Need at least {required} dates and non-overlapping long/short baskets")
         return store.put("job", {"id": new_id(), "status": "queued", "dataset_id": dataset["id"],
-            "config": body.config.model_dump(), "created": time.time()})
+            "config": body.config.model_dump(), "engine": connected.name, "created": time.time()})
 
     @app.get("/api/backtests/{identifier}")
     def backtest(identifier: str):
@@ -163,10 +189,12 @@ def create_app(db_path=None, *, local=False, token=None, engine=None, allowed_ho
     @app.post("/api/paper", status_code=201)
     def create_paper(body: PaperRequest):
         try:
-            selected_engine()
+            connected = selected_engine()
         except EngineUnavailable as exc:
             raise HTTPException(503, str(exc)) from exc
         run = store.get("backtest", body.backtest_id)
+        if run["engine"] != connected.name:
+            raise HTTPException(409, "Backtest engine version differs from the configured forward engine")
         config = Config.model_validate(run["config"])
         if body.frequency != "1d":
             raise HTTPException(422, "This daily backtest must forward-test on daily bars; intraday research support is not connected yet")
@@ -175,6 +203,8 @@ def create_app(db_path=None, *, local=False, token=None, engine=None, allowed_ho
         import re
         if not all(re.fullmatch(r"[A-Z0-9]{1,15}/(USDT|USD|USDC)", s) for s in body.symbols):
             raise HTTPException(422, "Use explicit exchange symbols such as BTC/USDT")
+        if len({s.split("/")[1] for s in body.symbols})!=1:
+            raise HTTPException(422,"All paper symbols must use the same quote currency")
         dataset = store.get("dataset", run["dataset_id"])
         def normalize(symbol):
             return symbol.split("/")[0]
@@ -184,6 +214,7 @@ def create_app(db_path=None, *, local=False, token=None, engine=None, allowed_ho
         return store.put("paper", {"id": new_id(), "name": run["name"], "backtest_id": run["id"],
             "engine": run["engine"], "config": config.model_dump(), "status": "running", "exchange": body.exchange,
             "symbols": body.symbols, "frequency": body.frequency, "drawdown_limit": body.drawdown_limit,
+            "quote_currency":body.symbols[0].split("/")[1],
             "capital": capital, "cash": capital, "equity": capital, "peak": capital, "positions": {},
             "marks": {}, "last_signal": None, "observed_at": None, "data_status": "awaiting-first-tick",
             "created": time.time(), "error": None})

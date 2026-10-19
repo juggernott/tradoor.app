@@ -1,107 +1,59 @@
 # Tradoor Python workspace and Alphacore v12 integration
 
-## Current status — 19 October 2026
+## Status — 19 October 2026
 
-The dashboard now talks to a same-origin FastAPI server rather than computing results in the browser. A separate Python worker consumes persisted research jobs and processes continuous simulated accounts. The selected production research engine is **Alphacore v12**, as requested. Its source has not yet been inspected: it is on the Mac mini, and the available Windows SSH key is rejected by the Mac account. There is no fallback to Alphaloop, v4, a fake engine, or the old browser simulator.
+The same-origin dashboard uses FastAPI, SQLite and an independent Python worker. The private Alphacore v12 research library is connected and verified locally. Private source was accessed through an authenticated file share, reviewed, and copied to a private runtime snapshot outside this public repository. Neither private source nor credentials are distributed here.
 
-Consequently, **actual v12 backend backtests and continuous strategy paper runs are not yet enabled or verified**. The API returns 503 and the dashboard disables their creation until a private v12 adapter is installed. Infrastructure tests inject a test-only engine. Test results must not be described as v12 research results.
+The tested identity is `alphacore-v12@839604801b26`. The adapter hashes eight library files and records their identities in results. A queued job and a paper account pin their engine version; changing it requires a new compatible run.
 
 ## Run locally
 
-From the repository root, in two terminals:
-
 ```sh
 python -m venv .venv
-# Activate .venv using your operating system's activation command.
-python -m pip install -e '.[web]'
+# Activate the virtual environment.
+python -m pip install -e '.[web,v12]'
+# Set TRADOOR_ALPHACORE_ROOT to your private v12 source root.
 python -m alphaloop.web.api --local
 ```
 
+In a second terminal with the same environment and working directory:
+
 ```sh
-# Activate the same environment in the second terminal.
 python -m alphaloop.web.worker
 ```
 
-Open http://127.0.0.1:4173. Both processes must use the same working directory, or set `TRADOOR_DB` to the same absolute SQLite file. Default: `state/tradoor.sqlite3`, excluded from Git. Local mode binds only to loopback and rejects non-loopback clients and unexpected hosts. Local mode is a single trusted-machine development workspace, not multi-user authentication.
+Open http://127.0.0.1:4173. Both processes must share `TRADOOR_DB` (default `state/tradoor.sqlite3`). An ignored `state/engine.json` containing `{"source_root":"/private/path/to/alphacore-v12"}` is an alternative to the source-root environment variable. The default factory is `alphaloop.web.alphacore_v12:create_engine`; `TRADOOR_ENGINE_FACTORY` optionally selects an operator-installed adapter. API callers cannot choose imports or executable code.
 
-The worker runs independently of the browser, retries failed market requests, writes a heartbeat, and resumes running accounts from persisted cash and positions after restart. It only runs while its process and host are awake. Closing a tool session, rebooting the machine, or terminating the worker stops processing until it is started again. For deployment, manage these processes with a service supervisor and persistent disk; that deployment is still pending.
+The source root must contain `research/lib/{__init__,backtest,validation,datasource,eda,factor,normalisers,signals}.py`. The reviewed dependency versions and source identity must be checked when upgrading. Missing source/dependencies disables research with an explicit error, without a legacy fallback.
 
-## Connect the private v12 engine
+Local mode is a single trusted-machine workspace, bound to loopback. External mode requires HTTPS, `TRADOOR_HOST`, and a securely configured 32+ character `TRADOOR_ADMIN_TOKEN`. It uses hashed owner sessions and Secure HttpOnly SameSite cookies; it is not multi-tenant identity. Public deployment and the tradoor.app domain cutover remain pending.
 
-Keep v12 source, strategies, settings, data and keys outside this public repository. Install its dependencies in the server/worker environment. Implement an adapter **after inspecting v12's actual functions** and configure both processes:
+## Actual v12 scope
 
-```text
-TRADOOR_ENGINE_FACTORY=your_private_v12_adapter:create_engine
-```
+The adapter calls the private library's `factor.rate_of_change` and `validation.backtest_v2`. Tradoor ranks the scaled signals, chooses equal long/short sleeves, and sums their daily return contributions. Momentum and sign-reversed reversal are baseline controls, not the private production strategy roster, HMM or HRP allocator. Custom factor authoring remains future work.
 
-This value is operator configuration. API callers cannot choose arbitrary Python modules, paths, expressions or code to execute.
+Backtests require at least 500 consecutive daily dates and two assets, with balanced panels, finite positive prices and no duplicate rows. Configured fees and slippage apply to turnover. A one-bar signal shift precedes close-to-close returns. Annualization is 365 days; the 70/30 chronological split is descriptive rather than a promotion verdict. Funding, borrow, margin, liquidation, next-open fills and selection-adjusted grades are absent. Capital is in the dataset's quote units; no USD conversion is performed.
 
-The factory returns an object with:
+Forward targets use the same v12 factor and ranking logic on common closed daily candles. The worker polls public Binance/Kraken prices at least 15 seconds apart and rebalances once per closed signal candle. It enforces gross exposure <=1, each position <=50%, and absolute net <=1%. Shorts are synthetic. The existing Python PaperExecutor provides simulated cash/quantity accounting only; it is not the research engine.
 
-- `name`: a stable engine/version label, for example `alphacore-v12@<source revision>`.
-- `backtest(csv, config, identifier, source) -> dict`: translates the bounded request into v12's backtest contract and returns real engine evidence. No subprocess command or shell string should be derived from requests.
-- `weights(frame, config, frequency) -> dict[str,float]`: calls v12's forward signal/portfolio logic on validated common closed candles. All requested exchange symbols must be present in the returned target weights. The web worker enforces gross <= 1x, each absolute target <= 50%, and absolute net <= 1%.
+## Persistence and controls
 
-Config is currently bounded to name, momentum/reversal mode, capital, lookback, selection, feeBps and slippageBps. Expand the schema to v12's actual strategy model after source review rather than guessing that v12 implements these baseline modes.
+SQLite WAL stores immutable dataset hashes, leased research jobs, results, sessions, paper cash/positions, fills, signal deduplication and equity observations. A stale job claim cannot overwrite a newer lease. Paper commits check account revision so a pause during a market fetch cannot commit stale fills. One frozen, validated mark snapshot is used per accounting tick. Missing, stale or future marks produce an unavailable-data state without invented fills.
 
-Backtest result contract:
+Pause and stop freeze processing without liquidation. Terminal stopped/halted runs cannot resume. Peak-equity drawdown halts flatten simulated positions at validated marks. The API returns the latest 200 fills and 1,000 equity points; full-history export and retention controls remain future work.
 
-```text
-id: exact requested identifier
-engine: exact adapter name
-name: strategy name
-status: completed
-config: exact immutable request configuration
-equity: final equity in USD
-curve: nonempty list of {date: ISO timestamp, equity: finite USD number}
-metrics: {totalReturn: fraction, maxDrawdown: fraction, sharpe: number or null}
-weights: optional retained weight records
-trades: optional retained trade records
-assumptions: explicit execution, fees, funding and validation methodology
-```
+The worker resumes persisted cash and positions on restart and runs independently of the browser. It only processes while its process and host remain awake. A supervised service with persistent disk is needed for deployment; the current verified run is on the development laptop, not on the Mac mini or tradoor.app. Real exchange orders and credentials are not exposed by this backend.
 
-The worker adds the immutable dataset ID. Do not create a paper run from a result whose underlying engine/configuration differs from the configured forward engine.
-
-## Implemented infrastructure
-
-- FastAPI health, same-origin dashboard, bounded dataset uploads and validation, immutable IDs and SHA-256 dataset hashes.
-- SQLite WAL storage for datasets, jobs, results, sessions, paper accounts, fills, signal deduplication and equity observations.
-- Research jobs claimed transactionally with a ten-minute recovery lease. A stale worker cannot overwrite the result after another claim.
-- Separate worker process with heartbeat and five-second scheduling loop; each active paper account is checked no more often than every 15 seconds.
-- Public CCXT market reads for Binance and Kraken. No exchange account credentials or real-order client is configured. Current UI forward mode is daily to match daily dataset/backtest inputs.
-- Closed daily candle signals, complete common universe/history, positive finite mark validation, and stale/future quote rejection.
-- Simulated quantity/cash reconciliation through the existing Python `PaperExecutor`, using one frozen price snapshot per tick. This executor is accounting infrastructure, not a substitute for the selected v12 research engine.
-- Atomic cash/position/fill/equity commits and one-rebalance-per-signal-candle deduplication. Revision checks prevent an API pause or stop during a market fetch from committing stale fills.
-- Pause/resume/terminal stop, and a peak-equity drawdown halt that flattens simulated positions.
-- Dashboard shows API/engine/worker state, persistent datasets/jobs/results, paper controls, positions, equity and recent fills.
-- Owner-token login for external mode, HttpOnly Secure SameSite cookie sessions, same-origin writes, host checks and logout invalidation. External mode requires HTTPS and a 32+ character `TRADOOR_ADMIN_TOKEN` configured securely; also set `TRADOOR_HOST` to the real hostname. This is single-owner access, not full multi-tenant identity.
-
-## Simulation limits
-
-Paper fills are local synthetic orders at observed public marks. Shorts are simulated; funding, borrow, margin, liquidation, venue precision, order-book fills and market impact are not modeled. This is neither live execution nor a testnet order service. A separate venue-certified lifecycle is required before real trading.
-
-Pause and stop freeze processing without liquidating positions. Terminal stopped/halted runs cannot resume. Drawdown halts flatten at validated marks. The API returns the most recent 200 fills and 1,000 equity points; underlying records persist in SQLite. Full-history export and retention management remain future work.
-
-Heartbeat online status is an operational signal, not proof that a run has fresh prices. A market error leaves the prior positions/equity intact and reports unavailable data and an error. Missing prices never become invented fills. Scheduling uses poll time, so quote/fill timestamps are not deterministic historical replay timestamps.
-
-## Verification completed
+## Verification
 
 ```sh
-python -m pytest tests/test_web_backend.py tests/test_web_market.py tests/test_execute.py tests/test_risk.py -q
+python -m pytest tests/test_web_backend.py tests/test_web_market.py tests/test_web_v12.py tests/test_execute.py tests/test_risk.py -q
 node --check web/dist/backend.js
 ```
 
-24 tests passed, including auth/session invalidation, dataset validation, engine-unavailable behavior, persisted jobs, expired-claim recovery, restored simulated cash/positions, once-per-candle fills, pause-during-fetch, stale/future prices, closed candles, risk flattening and terminal stop. Infrastructure tests use a test-only injected engine; they do not validate v12.
+28 targeted tests passed, including four tests against the actual configured private v12 library. They check v12 kernel invocation, shifted returns and costs, independence from future prices, matching historical/forward targets, and minimum history. The private-library tests skip on installations without a configured private source; test doubles separately cover worker persistence, deduplication, drawdown flattening, stale prices, pause races, job lease recovery, authentication and dataset validation.
 
-A real read-only Binance snapshot for BTC/USDT and ETH/USDT succeeded and returned a latest closed daily candle at 2026-10-18T00:00:00Z. No paper or real account was started on the Mac and no exchange orders were placed.
-
-Browser QA verified the API-connected dashboard, server-side synthetic dataset creation, persisted dataset identity/hash, and explicit v12-unavailable status.
-
-## Mac access blocker
-
-The private engine host is reachable, but SSH authentication with the available development-machine key is rejected. The public key was provided separately for one-time authorization; no private key or password was requested. No security setting or authorized key on the engine host was changed by this session. Private network addresses and account access details are intentionally excluded from this public repository.
-
-Once authenticated access is available, locate the v12 repository on its host, read its applicable instructions, identify the actual backtest/data/forward interfaces and dependencies, implement the adapter privately, and run real v12 integration tests before enabling research and continuous strategy paper runs.
+Browser verification imported 600 closed daily BTC/USDT and ETH/USDT bars from Binance, queued and completed a v12 backend backtest, then started one continuous paper account. The worker recorded two simulated fills, 70 USDT in initial fees/slippage, persisted positions, and fresh equity observations. This verifies operation, not strategy profitability. The tested baseline lost approximately 21.27% in the historical sample.
 
 ## Quandora source availability
 

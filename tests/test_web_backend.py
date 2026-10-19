@@ -67,14 +67,18 @@ def prepared(client, csv):
     return store, market, worker, paper.json()["id"]
 
 
-def test_default_engine_is_unavailable_not_legacy(monkeypatch):
+def test_default_engine_is_unavailable_not_legacy(monkeypatch, tmp_path):
     monkeypatch.delenv("TRADOOR_ENGINE_FACTORY", raising=False)
+    monkeypatch.delenv("TRADOOR_ALPHACORE_ROOT", raising=False)
+    monkeypatch.setenv("TRADOOR_ENGINE_CONFIG",str(tmp_path/"missing.json"))
     with pytest.raises(EngineUnavailable, match="v12"):
         load_engine()
 
 
 def test_unavailable_engine_rejects_job_without_queuing(tmp_path, monkeypatch, csv):
     monkeypatch.delenv("TRADOOR_ENGINE_FACTORY", raising=False)
+    monkeypatch.delenv("TRADOOR_ALPHACORE_ROOT", raising=False)
+    monkeypatch.setenv("TRADOOR_ENGINE_CONFIG",str(tmp_path/"missing.json"))
     with TestClient(create_app(tmp_path/"db", local=True, allowed_hosts=["testserver"])) as c:
         assert c.get("/api/health").json()["engine_ready"] is False
         d = c.post("/api/datasets", json={"csv": csv, "source": "fixture"}).json()

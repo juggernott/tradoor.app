@@ -249,7 +249,13 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=4173)
     parser.add_argument("--db", default=os.environ.get("TRADOOR_DB", "state/tradoor.sqlite3"))
+    parser.add_argument("--workspace", help="Private operator manifest; use separate processes for each workspace")
     args = parser.parse_args()
+    if args.workspace:
+        if args.local:
+            parser.error("Named customer workspaces require owner authentication; omit --local")
+        from alphaloop.web.workspace import configure_workspace
+        args.db = configure_workspace(args.workspace)
     if args.local and args.host not in {"127.0.0.1", "::1"}:
         parser.error("--local can only bind a loopback address")
     uvicorn.run(create_app(args.db, local=args.local), host=args.host, port=args.port)

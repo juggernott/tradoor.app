@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 import uuid
@@ -18,9 +19,21 @@ def dump(value) -> str:
 
 
 class Store:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, *, workspace_id=None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.workspace_id = workspace_id or os.environ.get("TRADOOR_WORKSPACE_ID")
+        with self.connect(True) as db:
+            # Bind before schema changes; never adopt an existing owner's data.
+            db.execute("CREATE TABLE IF NOT EXISTS workspace_identity (singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL)")
+            owner = db.execute("SELECT owner FROM workspace_identity WHERE singleton=1").fetchone()
+            if owner and owner[0] != self.workspace_id:
+                raise ValueError("Database belongs to a different workspace")
+            if not owner and self.workspace_id:
+                exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='records'").fetchone()
+                if exists and db.execute("SELECT 1 FROM records LIMIT 1").fetchone():
+                    raise ValueError("Existing unbound data requires an explicit owner migration")
+                db.execute("INSERT INTO workspace_identity VALUES(1,?)", (self.workspace_id,))
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript("""

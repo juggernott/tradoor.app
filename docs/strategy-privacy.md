@@ -23,6 +23,45 @@ no publication endpoint.
 - Private directory ignore rules are a backstop, not an isolation control. Keep
   customer packages outside the repository and verify release contents.
 
+## Named workspace deployment foundation
+
+API and worker CLIs accept `--workspace /private/customer/workspace.json`.
+This operator-only manifest requires an explicit adapter and source root, so a
+new customer cannot accidentally inherit the development owner's v12 adapter.
+Relative paths resolve beside the manifest. Tokens come from a named environment
+variable, not the manifest or repository.
+
+```json
+{
+  "id": "customer-a",
+  "database": "state/workspace.sqlite3",
+  "engine_factory": "customer_private.adapter:create_engine",
+  "source_root": "strategy-package",
+  "token_env": "CUSTOMER_A_OWNER_TOKEN",
+  "host": "customer-a.example.com"
+}
+```
+
+Run a separate API and worker process pair per manifest:
+
+```sh
+python -m alphaloop.web.api --workspace /private/customer/workspace.json --port 4174
+python -m alphaloop.web.worker --workspace /private/customer/workspace.json
+```
+
+Named API workspaces reject `--local`: owner authentication is mandatory.
+The database is durably bound to its workspace ID and rejects another ID or an
+unscoped process. Populated, unbound databases cannot be silently adopted; no
+automatic owner migration is provided. The development owner's existing
+database and paper run are unchanged.
+
+Tests verify guessed-ID reads/writes cannot reach another workspace's database,
+sessions cannot cross stores, and another worker cannot claim research jobs.
+This is separate-deployment isolation, not row-level tenancy in a shared app.
+Workspace IDs and manifests are operator configuration, not a sandbox or an
+access key. Production deployments still need separate OS identities or
+containers, filesystem permissions, secret scopes and network controls.
+
 ## Required before onboarding other users
 
 The current global adapter, owner token and SQLite workspace must never be

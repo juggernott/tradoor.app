@@ -129,7 +129,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default=os.environ.get("TRADOOR_DB", "state/tradoor.sqlite3"))
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--workspace", help="Same private manifest used by this workspace's API")
     args = parser.parse_args()
+    if args.workspace:
+        from alphaloop.web.workspace import configure_workspace
+        args.db = configure_workspace(args.workspace)
     logging.basicConfig(level=logging.INFO)
     worker = Worker(Store(args.db))
     running = True
